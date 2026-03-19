@@ -15,9 +15,10 @@ export async function POST(request: NextRequest) {
     // Get today's fixtures
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const fixtures = await getFixtures(dateStr);
+    const fixturesData = await getFixtures(dateStr);
+    const fixtures = fixturesData?.response || [];
 
-    if (!fixtures || fixtures.length === 0) {
+    if (fixtures.length === 0) {
       return NextResponse.json({ message: 'No fixtures found for today', alerts: 0 });
     }
 
