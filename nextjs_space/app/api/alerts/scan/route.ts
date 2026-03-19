@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { Decimal } from '@prisma/client/runtime/library';
 import { getFixtures } from '@/lib/api-football';
 import { getOddsForMatch } from '@/lib/odds-api';
 
@@ -95,10 +95,10 @@ export async function POST(request: NextRequest) {
                   kickoff,
                   marketType: check.market,
                   selection: check.selection,
-                  currentOdds: new Decimal(parseFloat(check.odd.toFixed(2))),
+                  currentOdds: new Prisma.Decimal(parseFloat(check.odd.toFixed(2))),
                   bookmaker: bk.bookmaker,
-                  fairOdds: new Decimal(parseFloat(check.fairOdd.toFixed(2))),
-                  edgePercent: new Decimal(parseFloat(edge.toFixed(2))),
+                  fairOdds: new Prisma.Decimal(parseFloat(check.fairOdd.toFixed(2))),
+                  edgePercent: new Prisma.Decimal(parseFloat(edge.toFixed(2))),
                   confidence,
                   riskLevel,
                 },

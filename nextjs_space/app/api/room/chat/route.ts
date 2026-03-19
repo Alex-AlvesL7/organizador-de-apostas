@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { createChatCompletion, getAiModels } from '@/lib/ai';
+import { createChatCompletion, getAiModels, type AiMessage } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +70,7 @@ Responda SEMPRE em português brasileiro, de forma direta e profissional. Você 
 Seja conciso mas completo. Use dados concretos quando possível.`;
 
     // Build messages for LLM
-    const llmMessages: { role: string; content: string }[] = [
+    const llmMessages: AiMessage[] = [
       { role: 'system', content: systemPrompt },
     ];
 

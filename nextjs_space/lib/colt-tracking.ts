@@ -1,5 +1,5 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
-import { Decimal } from '@prisma/client/runtime/library';
 
 // ============================================================
 // COLT TRACKING - Core business logic
@@ -80,8 +80,8 @@ export async function saveColtPicks(params: {
           kickoff: params.kickoff,
           marketType: mapMarketType(dica.mercado),
           selection: dica.aposta,
-          recommendedOddsMin: new Decimal(parseFloat(dica.odd_minima) || 1.5),
-          currentOddsAtPick: currentOdd ? new Decimal(currentOdd) : null,
+          recommendedOddsMin: new Prisma.Decimal(parseFloat(dica.odd_minima) || 1.5),
+          currentOddsAtPick: currentOdd ? new Prisma.Decimal(currentOdd) : null,
           bookmaker,
           stakeUnits: Math.min(10, Math.max(1, dica.stake || 5)),
           riskLevel: mapRiskLevel(dica.risco),
@@ -188,8 +188,8 @@ export async function settlePick(pickId: string, params: {
       data: {
         coltPickId: pickId,
         result: params.result,
-        finalOdds: params.finalOdds ? new Decimal(params.finalOdds) : null,
-        profitUnits: new Decimal(parseFloat(profitUnits.toFixed(2))),
+        finalOdds: params.finalOdds ? new Prisma.Decimal(params.finalOdds) : null,
+        profitUnits: new Prisma.Decimal(parseFloat(profitUnits.toFixed(2))),
       },
     }),
     prisma.coltPick.update({

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Filter, Calendar, RefreshCw, Zap, CheckCircle2, Clock } from 'lucide-react';
 import FixtureCard from './fixture-card';
-import { MAJOR_LEAGUES } from '@/lib/api-football';
+import { MAJOR_LEAGUES } from '@/lib/football-constants';
 import toast from 'react-hot-toast';
 
 interface Fixture {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { Decimal } from '@prisma/client/runtime/library';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,12 +49,12 @@ export async function PUT(request: NextRequest) {
     const userId = body.userId || DEFAULT_USER_ID;
 
     const updateData: any = {};
-    if (body.bankrollEstimate !== undefined) updateData.bankrollEstimate = body.bankrollEstimate ? new Decimal(body.bankrollEstimate) : null;
+    if (body.bankrollEstimate !== undefined) updateData.bankrollEstimate = body.bankrollEstimate ? new Prisma.Decimal(body.bankrollEstimate) : null;
     if (body.riskProfile) updateData.riskProfile = body.riskProfile;
     if (body.favoriteLeagues) updateData.favoriteLeagues = body.favoriteLeagues;
     if (body.preferredMarkets) updateData.preferredMarkets = body.preferredMarkets;
-    if (body.minOdds !== undefined) updateData.minOdds = body.minOdds ? new Decimal(body.minOdds) : null;
-    if (body.maxOdds !== undefined) updateData.maxOdds = body.maxOdds ? new Decimal(body.maxOdds) : null;
+    if (body.minOdds !== undefined) updateData.minOdds = body.minOdds ? new Prisma.Decimal(body.minOdds) : null;
+    if (body.maxOdds !== undefined) updateData.maxOdds = body.maxOdds ? new Prisma.Decimal(body.maxOdds) : null;
     if (body.maxPicksPerDay !== undefined) updateData.maxPicksPerDay = body.maxPicksPerDay;
 
     const profile = await prisma.userProfile.upsert({
