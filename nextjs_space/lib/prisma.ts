@@ -8,6 +8,17 @@ const globalForPrisma = globalThis as unknown as {
   prismaAdapter: PrismaPg | undefined;
 };
 
+function getAdapterConnectionString(connectionUrl: string) {
+  const parsedUrl = new URL(connectionUrl);
+
+  parsedUrl.searchParams.delete('sslmode');
+  parsedUrl.searchParams.delete('sslcert');
+  parsedUrl.searchParams.delete('sslkey');
+  parsedUrl.searchParams.delete('sslrootcert');
+
+  return parsedUrl.toString();
+}
+
 const connectionString = process.env.DATABASE_URL ?? process.env.DIRECT_URL;
 
 if (!connectionString) {
@@ -15,11 +26,12 @@ if (!connectionString) {
 }
 
 const usesSupabase = connectionString.includes('supabase.com');
+const adapterConnectionString = usesSupabase ? getAdapterConnectionString(connectionString) : connectionString;
 
 const adapter =
   globalForPrisma.prismaAdapter ??
   new PrismaPg({
-    connectionString,
+    connectionString: adapterConnectionString,
     ...(usesSupabase
       ? {
           ssl: {
