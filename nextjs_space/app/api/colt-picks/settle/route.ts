@@ -101,25 +101,38 @@ export async function PUT(request: NextRequest) {
 }
 
 function determineResult(
-  pick: { marketType: string; selection: string },
+  pick: { marketType: string; selection: string; homeTeam: string; awayTeam: string },
   homeGoals: number,
   awayGoals: number
 ): 'WIN' | 'LOSS' | 'PUSH' | null {
-  const sel = pick.selection.toLowerCase();
+  const sel = pick.selection
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const homeTeam = pick.homeTeam
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const awayTeam = pick.awayTeam
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
   const mt = pick.marketType;
 
   if (mt === '1X2') {
     const homeWin = homeGoals > awayGoals;
     const draw = homeGoals === awayGoals;
     const awayWin = awayGoals > homeGoals;
+    const mentionsHomeTeam = homeTeam && sel.includes(homeTeam);
+    const mentionsAwayTeam = awayTeam && sel.includes(awayTeam);
 
-    if (sel.includes('casa') || sel.includes('home') || sel.includes('vitória') && !sel.includes('fora')) {
+    if (mentionsHomeTeam || sel.includes('casa') || sel.includes('home') || (sel.includes('vitoria') && !mentionsAwayTeam && !sel.includes('fora'))) {
       return homeWin ? 'WIN' : 'LOSS';
     }
     if (sel.includes('empate') || sel.includes('draw')) {
       return draw ? 'WIN' : 'LOSS';
     }
-    if (sel.includes('fora') || sel.includes('away') || sel.includes('visitante')) {
+    if (mentionsAwayTeam || sel.includes('fora') || sel.includes('away') || sel.includes('visitante')) {
       return awayWin ? 'WIN' : 'LOSS';
     }
   }

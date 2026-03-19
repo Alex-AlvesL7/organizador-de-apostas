@@ -14,6 +14,31 @@ export interface ColtDica {
   motivo: string;
 }
 
+function normalizeSelectionText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function selectionMentionsTeam(selection: string, teamName: string): boolean {
+  const normalizedSelection = normalizeSelectionText(selection);
+  const normalizedTeam = normalizeSelectionText(teamName);
+
+  if (!normalizedSelection || !normalizedTeam) return false;
+  if (normalizedSelection.includes(normalizedTeam)) return true;
+
+  const selectionWords = normalizedSelection.split(' ');
+  const teamWords = normalizedTeam.split(' ').filter((word) => word.length > 2);
+
+  if (teamWords.length === 0) return false;
+
+  return teamWords.every((word) => selectionWords.some((selectionWord) => selectionWord.includes(word) || word.includes(selectionWord)));
+}
+
 // Map market names from AI output to standardized market types
 function mapMarketType(mercado: string): string {
   const m = mercado.toLowerCase();
@@ -59,10 +84,13 @@ export async function saveColtPicks(params: {
       if (bestBookmaker) {
         bookmaker = bestBookmaker.bookmaker || null;
         // Try to match by selection type
-        const selection = dica.aposta.toLowerCase();
-        if (selection.includes('casa') || selection.includes('home') || selection.includes('vitória') && selection.includes('casa')) {
+        const selection = normalizeSelectionText(dica.aposta);
+        const mentionsHomeTeam = selectionMentionsTeam(selection, params.homeTeam);
+        const mentionsAwayTeam = selectionMentionsTeam(selection, params.awayTeam);
+
+        if (mentionsHomeTeam || selection.includes('casa') || selection.includes('home') || (selection.includes('vitoria') && !mentionsAwayTeam)) {
           currentOdd = bestBookmaker.homeOdd || null;
-        } else if (selection.includes('fora') || selection.includes('away') || selection.includes('visitante')) {
+        } else if (mentionsAwayTeam || selection.includes('fora') || selection.includes('away') || selection.includes('visitante')) {
           currentOdd = bestBookmaker.awayOdd || null;
         } else if (selection.includes('empate') || selection.includes('draw')) {
           currentOdd = bestBookmaker.drawOdd || null;
