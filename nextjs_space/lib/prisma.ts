@@ -14,7 +14,20 @@ if (!connectionString) {
   throw new Error('DATABASE_URL or DIRECT_URL must be defined to initialize Prisma.');
 }
 
-const adapter = globalForPrisma.prismaAdapter ?? new PrismaPg({ connectionString });
+const usesSupabase = connectionString.includes('supabase.com');
+
+const adapter =
+  globalForPrisma.prismaAdapter ??
+  new PrismaPg({
+    connectionString,
+    ...(usesSupabase
+      ? {
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        }
+      : {}),
+  });
 
 export const prisma =
   globalForPrisma.prisma ??
