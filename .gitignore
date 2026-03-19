@@ -1,0 +1,27 @@
+# Dependencies
+nextjs_space/node_modules/
+
+# Next.js build output
+nextjs_space/.next/
+nextjs_space/out/
+
+# Environment variables
+nextjs_space/.env
+nextjs_space/.env.*
+!nextjs_space/.env.example
+
+# TypeScript build info
+nextjs_space/*.tsbuildinfo
+
+# Prisma generated client cache
+nextjs_space/node_modules/.prisma/
+
+# Local tooling files
+.abacus.donotdelete
+image.png
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,236 @@
+generator client {
+    provider = "prisma-client-js"
+    binaryTargets = ["native"]
+    output = "../node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+}
+
+model League {
+  id          Int       @id
+  name        String
+  country     String
+  logo        String?
+  flag        String?
+  season      Int
+  fixtures    Fixture[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([id, season])
+}
+
+model Team {
+  id              Int       @id
+  name            String
+  logo            String?
+  homeFixtures    Fixture[] @relation("HomeTeam")
+  awayFixtures    Fixture[] @relation("AwayTeam")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Fixture {
+  id              Int       @id
+  date            DateTime
+  timestamp       BigInt
+  timezone        String
+  venue           String?
+  status          String
+  elapsed         Int?
+  
+  leagueId        Int
+  league          League    @relation(fields: [leagueId, season], references: [id, season])
+  season          Int
+  round           String?
+  
+  homeTeamId      Int
+  homeTeam        Team      @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  homeScore       Int?
+  
+  awayTeamId      Int
+  awayTeam        Team      @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  awayScore       Int?
+  
+  odds            Odd[]
+  predictions     Prediction[]
+  statistics      Json?
+  h2h             Json?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([date])
+  @@index([leagueId])
+}
+
+model Odd {
+  id              Int       @id @default(autoincrement())
+  fixtureId       Int
+  fixture         Fixture   @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  
+  bookmaker       String
+  betType         String
+  
+  homeOdd         Float?
+  drawOdd         Float?
+  awayOdd         Float?
+  
+  overOdd         Float?
+  underOdd        Float?
+  line            Float?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([fixtureId])
+}
+
+model Prediction {
+  id              Int       @id @default(autoincrement())
+  fixtureId       Int
+  fixture         Fixture   @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  
+  recommendation  String
+  confidence      Float
+  reasoning       String
+  valueBets       Json?
+  analysis        Json?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([fixtureId])
+}
+
+model ApiCache {
+  id              Int       @id @default(autoincrement())
+  cacheKey        String    @unique
+  data            Json
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+
+  @@index([cacheKey])
+  @@index([expiresAt])
+}
+
+// ============================================================
+// COLT TRACKING SYSTEM
+// ============================================================
+
+model ColtPick {
+  id                  String    @id @default(uuid())
+  matchId             String
+  createdAt           DateTime  @default(now())
+  league              String
+  homeTeam            String
+  awayTeam            String
+  kickoff             DateTime
+  marketType          String    // 1X2, OVER_UNDER, BTTS, HANDICAP
+  selection           String    // Home, Draw, Away, Over 2.5, etc.
+  recommendedOddsMin  Decimal   @db.Decimal(10, 2)
+  currentOddsAtPick   Decimal?  @db.Decimal(10, 2)
+  bookmaker           String?
+  stakeUnits          Int       // 1-10
+  riskLevel           String    // LOW, MEDIUM, HIGH
+  confidence          Int       // 0-100
+  reasoning           String    @db.Text
+  status              String    @default("PENDING") // PENDING, CANCELLED, SETTLED
+
+  result              ColtPickResult?
+  alerts              Alert[]
+
+  @@index([matchId])
+  @@index([status])
+  @@index([kickoff])
+  @@index([createdAt])
+}
+
+model ColtPickResult {
+  id            String    @id @default(uuid())
+  coltPickId    String    @unique
+  coltPick      ColtPick  @relation(fields: [coltPickId], references: [id], onDelete: Cascade)
+  result        String    // WIN, LOSS, PUSH, VOID
+  finalOdds     Decimal?  @db.Decimal(10, 2)
+  profitUnits   Decimal   @db.Decimal(10, 2)
+  settledAt     DateTime  @default(now())
+
+  @@index([result])
+  @@index([settledAt])
+}
+
+model UserProfile {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  bankrollEstimate  Decimal?  @db.Decimal(12, 2)
+  riskProfile       String    @default("MODERATE") // CONSERVATIVE, MODERATE, AGGRESSIVE
+  favoriteLeagues   Json      @default("[]")       // string[]
+  preferredMarkets  Json      @default("[]")       // string[]
+  minOdds           Decimal?  @db.Decimal(10, 2)
+  maxOdds           Decimal?  @db.Decimal(10, 2)
+  maxPicksPerDay    Int?
+
+  @@index([userId])
+}
+
+model ColtAnalysis {
+  id            String    @id @default(uuid())
+  matchId       String    @unique
+  league        String
+  homeTeam      String
+  awayTeam      String
+  kickoff       DateTime
+  veredito      String
+  confianca     Int
+  analiseColt   String    @db.Text
+  alerta        String?   @db.Text
+  placarProvavel String?
+  resumoRapido  String?   @db.Text
+  dicas         Json      // Array of dica objects from AI
+  rawResult     Json?     // Full raw AI result for re-rendering
+  createdAt     DateTime  @default(now())
+
+  @@index([matchId])
+}
+
+model ConversationLog {
+  id            String    @id @default(uuid())
+  matchId       String
+  userId        String?
+  role          String    // USER, ASSISTANT
+  message       String    @db.Text
+  createdAt     DateTime  @default(now())
+
+  @@index([matchId])
+  @@index([createdAt])
+}
+
+model Alert {
+  id            String    @id @default(uuid())
+  matchId       String
+  createdAt     DateTime  @default(now())
+  league        String
+  homeTeam      String
+  awayTeam      String
+  kickoff       DateTime
+  marketType    String
+  selection     String
+  currentOdds   Decimal   @db.Decimal(10, 2)
+  bookmaker     String
+  fairOdds      Decimal   @db.Decimal(10, 2)
+  edgePercent   Decimal   @db.Decimal(5, 2)
+  confidence    Int       // 0-100
+  riskLevel     String    // LOW, MEDIUM, HIGH
+  coltPickId    String?
+  coltPick      ColtPick? @relation(fields: [coltPickId], references: [id], onDelete: SetNull)
+  status        String    @default("ACTIVE") // ACTIVE, EXPIRED, DISMISSED
+
+  @@index([matchId])
+  @@index([status])
+  @@index([kickoff])
+  @@index([createdAt])
+}
