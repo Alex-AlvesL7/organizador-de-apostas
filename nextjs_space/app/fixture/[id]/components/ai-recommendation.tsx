@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Flame, Target, AlertTriangle, Shield, RefreshCw, Crosshair, BookmarkPlus, CheckCircle2, LogIn } from 'lucide-react';
+import { Flame, Target, AlertTriangle, Shield, RefreshCw, Crosshair, BookmarkPlus, CheckCircle2, LogIn, Wallet, BarChart3 } from 'lucide-react';
 import { signIn, useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 
@@ -212,6 +212,20 @@ export default function AIRecommendation({
     return Math.min(Math.max(stake, 1), 10) * 10;
   };
 
+  const getRiskProfileLabel = (profile: string) => {
+    if (profile === 'CONSERVATIVE') return 'Conservador';
+    if (profile === 'AGGRESSIVE') return 'Agressivo';
+    return 'Moderado';
+  };
+
+  const formatCurrency = (value: number | null | undefined) => {
+    if (typeof value !== 'number' || Number.isNaN(value)) return null;
+    return value.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+  };
+
   // Loading state
   if (loading || checkingCache) {
     return (
@@ -312,6 +326,62 @@ export default function AIRecommendation({
         </div>
       </div>
 
+      {recommendation?.guidance && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+            <div className="mb-3 flex items-center gap-2 text-emerald-700">
+              <Shield className="h-5 w-5" />
+              <h4 className="font-bold">Score do jogo</h4>
+            </div>
+            <p className="text-2xl font-black text-emerald-800">{recommendation?.confianca || 0}/100</p>
+            <p className="mt-1 text-sm font-semibold text-emerald-700">
+              {recommendation?.guidance?.confidenceTier?.label || 'Boa'}
+            </p>
+            <p className="mt-2 text-sm text-emerald-800/80">
+              {recommendation?.guidance?.confidenceTier?.summary}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="mb-3 flex items-center gap-2 text-slate-700">
+              <Wallet className="h-5 w-5" />
+              <h4 className="font-bold">Gestão de banca</h4>
+            </div>
+            <p className="text-sm font-semibold text-slate-900">
+              Perfil {getRiskProfileLabel(recommendation?.guidance?.riskProfileApplied)}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              1u = {recommendation?.guidance?.bankrollManagement?.unitPercent || 0}% da banca
+              {recommendation?.guidance?.bankrollManagement?.unitValue
+                ? ` (${formatCurrency(recommendation?.guidance?.bankrollManagement?.unitValue)})`
+                : ''}
+            </p>
+            <p className="mt-2 text-sm text-slate-600">{recommendation?.guidance?.recommendationNote}</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="mb-3 flex items-center gap-2 text-slate-700">
+              <BarChart3 className="h-5 w-5" />
+              <h4 className="font-bold">Plano sugerido</h4>
+            </div>
+            <div className="space-y-2 text-sm text-slate-700">
+              <p>
+                <span className="font-semibold text-slate-900">Estratégia:</span>{' '}
+                {recommendation?.guidance?.bankrollManagement?.strategy}
+              </p>
+              <p>
+                <span className="font-semibold text-slate-900">Maior stake:</span>{' '}
+                {recommendation?.guidance?.bankrollManagement?.strongestStake || 0}u
+              </p>
+              <p>
+                <span className="font-semibold text-slate-900">Média das picks:</span>{' '}
+                {recommendation?.guidance?.bankrollManagement?.averageStake || 0}u
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Dicas de Apostas */}
       <div>
         <div className="flex items-center space-x-2 mb-4">
@@ -370,6 +440,43 @@ export default function AIRecommendation({
                     </p>
                   </div>
                 </div>
+
+                {dica?.stake_sugerida && (
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Stake sugerida para você
+                        </p>
+                        <p className="mt-1 text-lg font-bold text-slate-900">
+                          {dica?.stake_sugerida?.unidades}u • {dica?.stake_sugerida?.rotulo}
+                        </p>
+                        <p className="text-sm text-slate-600">
+                          Exposição de {dica?.stake_sugerida?.percentual_banca}% da banca
+                          {dica?.stake_sugerida?.valor_reais
+                            ? ` • ${formatCurrency(dica?.stake_sugerida?.valor_reais)}`
+                            : ''}
+                        </p>
+                      </div>
+                      <div className="rounded-lg bg-white px-3 py-2 text-sm text-slate-600 border border-slate-200">
+                        {dica?.stake_sugerida?.estrategia}
+                      </div>
+                    </div>
+
+                    {dica?.compatibilidade_perfil?.avisos?.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 mb-1">
+                          Ajuste ao seu perfil
+                        </p>
+                        <ul className="space-y-1 text-sm text-amber-800">
+                          {dica.compatibilidade_perfil.avisos.map((aviso: string, avisoIndex: number) => (
+                            <li key={avisoIndex}>• {aviso}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/prisma';
 import { saveColtPicks } from '@/lib/colt-tracking';
 import { createChatCompletion, getAiModels } from '@/lib/ai';
+import { authOptions } from '@/lib/auth';
+import { decorateRecommendationResult, RecommendationUserProfile } from '@/lib/recommendation-personalization';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,10 +29,37 @@ function rebuildCachedResultFromPicks(existingPicks: any[]) {
   };
 }
 
+async function getRecommendationProfile(): Promise<RecommendationUserProfile | null> {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id) {
+    return null;
+  }
+
+  const profile = await prisma.userProfile.findUnique({
+    where: { userId: session.user.id },
+  }).catch(() => null);
+
+  if (!profile) {
+    return null;
+  }
+
+  return {
+    riskProfile: profile.riskProfile,
+    bankrollEstimate: profile.bankrollEstimate ? Number(profile.bankrollEstimate) : null,
+    minOdds: profile.minOdds ? Number(profile.minOdds) : null,
+    maxOdds: profile.maxOdds ? Number(profile.maxOdds) : null,
+    maxPicksPerDay: profile.maxPicksPerDay,
+    favoriteLeagues: Array.isArray(profile.favoriteLeagues) ? profile.favoriteLeagues as string[] : [],
+    preferredMarkets: Array.isArray(profile.preferredMarkets) ? profile.preferredMarkets as string[] : [],
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const fixtureId = searchParams.get('fixtureId');
+    const profile = await getRecommendationProfile();
 
     if (!fixtureId) {
       return NextResponse.json({ error: 'fixtureId is required' }, { status: 400 });
@@ -42,7 +72,7 @@ export async function GET(request: NextRequest) {
     }).catch(() => null);
 
     if (existingAnalysis?.rawResult) {
-      return NextResponse.json({ cached: true, result: existingAnalysis.rawResult });
+      return NextResponse.json({ cached: true, result: decorateRecommendationResult(existingAnalysis.rawResult as any, profile) });
     }
 
     const existingPicks = await prisma.coltPick.findMany({
@@ -52,7 +82,7 @@ export async function GET(request: NextRequest) {
     }).catch(() => []);
 
     if (existingPicks.length > 0) {
-      return NextResponse.json({ cached: true, result: rebuildCachedResultFromPicks(existingPicks) });
+      return NextResponse.json({ cached: true, result: decorateRecommendationResult(rebuildCachedResultFromPicks(existingPicks), profile) });
     }
 
     return NextResponse.json({ cached: false, result: null }, { status: 404 });
@@ -65,6 +95,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { fixtureId, fixture, odds, statistics, h2h, forceNew } = await request.json();
+    const profile = await getRecommendationProfile();
 
     if (!fixtureId || !fixture) {
       return NextResponse.json(
@@ -83,7 +114,7 @@ export async function POST(request: NextRequest) {
 
       if (existingAnalysis && existingAnalysis.rawResult) {
         console.log(`[Cache HIT] Returning saved ColtAnalysis for match ${matchId}`);
-        const cachedResult = existingAnalysis.rawResult as any;
+        const cachedResult = decorateRecommendationResult(existingAnalysis.rawResult as any, profile);
         const stream = new ReadableStream({
           start(controller) {
             const encoder = new TextEncoder();
@@ -107,7 +138,7 @@ export async function POST(request: NextRequest) {
 
       if (existingPicks.length > 0) {
         console.log(`[Cache HIT] Rebuilding response from ${existingPicks.length} ColtPicks for match ${matchId}`);
-        const rebuiltResult = rebuildCachedResultFromPicks(existingPicks);
+        const rebuiltResult = decorateRecommendationResult(rebuildCachedResultFromPicks(existingPicks), profile);
 
         const stream = new ReadableStream({
           start(controller) {
@@ -309,7 +340,8 @@ Responda APENAS com JSON puro (sem markdown, sem blocos de código) no formato:
                   try {
                     const finalResult = JSON.parse(buffer);
                     await storePrediction(finalResult);
-                    const finalData = JSON.stringify({ status: 'completed', result: finalResult });
+                    const decoratedResult = decorateRecommendationResult(finalResult, profile);
+                    const finalData = JSON.stringify({ status: 'completed', result: decoratedResult });
                     safeEnqueue(encoder.encode(`data: ${finalData}\n\n`));
                   } catch (parseError: any) {
                     console.error('Error parsing final result:', parseError);
@@ -333,7 +365,8 @@ Responda APENAS com JSON puro (sem markdown, sem blocos de código) no formato:
             try {
               const finalResult = JSON.parse(buffer);
               await storePrediction(finalResult);
-              const finalData = JSON.stringify({ status: 'completed', result: finalResult });
+              const decoratedResult = decorateRecommendationResult(finalResult, profile);
+              const finalData = JSON.stringify({ status: 'completed', result: decoratedResult });
               safeEnqueue(encoder.encode(`data: ${finalData}\n\n`));
               safeEnqueue(encoder.encode('data: [DONE]\n\n'));
             } catch (e) { console.error('Failed to parse buffer after stream end:', e); }
