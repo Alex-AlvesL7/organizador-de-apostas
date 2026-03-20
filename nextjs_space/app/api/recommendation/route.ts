@@ -71,18 +71,24 @@ export async function GET(request: NextRequest) {
       where: { matchId },
     }).catch(() => null);
 
-    if (existingAnalysis?.rawResult) {
-      return NextResponse.json({ cached: true, result: decorateRecommendationResult(existingAnalysis.rawResult as any, profile) });
-    }
-
     const existingPicks = await prisma.coltPick.findMany({
       where: { matchId },
       include: { result: true },
       orderBy: { createdAt: 'desc' },
     }).catch(() => []);
 
+    if (existingAnalysis?.rawResult) {
+      return NextResponse.json({
+        cached: true,
+        result: decorateRecommendationResult(existingAnalysis.rawResult as any, profile, { savedPicks: existingPicks }),
+      });
+    }
+
     if (existingPicks.length > 0) {
-      return NextResponse.json({ cached: true, result: decorateRecommendationResult(rebuildCachedResultFromPicks(existingPicks), profile) });
+      return NextResponse.json({
+        cached: true,
+        result: decorateRecommendationResult(rebuildCachedResultFromPicks(existingPicks), profile, { savedPicks: existingPicks }),
+      });
     }
 
     return NextResponse.json({ cached: false, result: null }, { status: 404 });
@@ -114,7 +120,11 @@ export async function POST(request: NextRequest) {
 
       if (existingAnalysis && existingAnalysis.rawResult) {
         console.log(`[Cache HIT] Returning saved ColtAnalysis for match ${matchId}`);
-        const cachedResult = decorateRecommendationResult(existingAnalysis.rawResult as any, profile);
+        const savedPicks = await prisma.coltPick.findMany({
+          where: { matchId },
+          orderBy: { createdAt: 'desc' },
+        }).catch(() => []);
+        const cachedResult = decorateRecommendationResult(existingAnalysis.rawResult as any, profile, { savedPicks });
         const stream = new ReadableStream({
           start(controller) {
             const encoder = new TextEncoder();
@@ -138,7 +148,7 @@ export async function POST(request: NextRequest) {
 
       if (existingPicks.length > 0) {
         console.log(`[Cache HIT] Rebuilding response from ${existingPicks.length} ColtPicks for match ${matchId}`);
-        const rebuiltResult = decorateRecommendationResult(rebuildCachedResultFromPicks(existingPicks), profile);
+        const rebuiltResult = decorateRecommendationResult(rebuildCachedResultFromPicks(existingPicks), profile, { savedPicks: existingPicks });
 
         const stream = new ReadableStream({
           start(controller) {
@@ -224,6 +234,7 @@ Responda APENAS com JSON puro (sem markdown, sem blocos de código) no formato:
       "odd_minima": "1.85",
       "stake": 7,
       "risco": "Médio",
+      "probabilidade_estimada": 63,
       "motivo": "Explicação curta e direta do porquê dessa aposta"
     }
   ],
@@ -236,7 +247,7 @@ Responda APENAS com JSON puro (sem markdown, sem blocos de código) no formato:
     const response = await createChatCompletion({
       model: aiModels.recommendation,
       messages: [
-        { role: 'system', content: 'Você é o COLT, o maior consultor de apostas esportivas do Brasil. Responda SEMPRE em JSON válido puro, sem markdown. Seja direto, agressivo e certeiro nas suas dicas. Dê no mínimo 2 e no máximo 5 dicas de apostas por jogo, cobrindo diferentes mercados (resultado, gols, handicap, etc).' },
+        { role: 'system', content: 'Você é o COLT, o maior consultor de apostas esportivas do Brasil. Responda SEMPRE em JSON válido puro, sem markdown. Seja direto, agressivo e certeiro nas suas dicas. Dê no mínimo 2 e no máximo 5 dicas de apostas por jogo, cobrindo diferentes mercados (resultado, gols, handicap, etc). Para cada dica, inclua também probabilidade_estimada em percentual inteiro.' },
         { role: 'user', content: prompt }
       ],
       stream: true,
@@ -340,7 +351,7 @@ Responda APENAS com JSON puro (sem markdown, sem blocos de código) no formato:
                   try {
                     const finalResult = JSON.parse(buffer);
                     await storePrediction(finalResult);
-                    const decoratedResult = decorateRecommendationResult(finalResult, profile);
+                    const decoratedResult = decorateRecommendationResult(finalResult, profile, { odds });
                     const finalData = JSON.stringify({ status: 'completed', result: decoratedResult });
                     safeEnqueue(encoder.encode(`data: ${finalData}\n\n`));
                   } catch (parseError: any) {
@@ -365,7 +376,7 @@ Responda APENAS com JSON puro (sem markdown, sem blocos de código) no formato:
             try {
               const finalResult = JSON.parse(buffer);
               await storePrediction(finalResult);
-              const decoratedResult = decorateRecommendationResult(finalResult, profile);
+              const decoratedResult = decorateRecommendationResult(finalResult, profile, { odds });
               const finalData = JSON.stringify({ status: 'completed', result: decoratedResult });
               safeEnqueue(encoder.encode(`data: ${finalData}\n\n`));
               safeEnqueue(encoder.encode('data: [DONE]\n\n'));

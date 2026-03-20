@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Flame, Target, AlertTriangle, Shield, RefreshCw, Crosshair, BookmarkPlus, CheckCircle2, LogIn, Wallet, BarChart3 } from 'lucide-react';
+import { Flame, Target, AlertTriangle, Shield, RefreshCw, Crosshair, BookmarkPlus, CheckCircle2, LogIn, Wallet, BarChart3, TrendingUp, Filter } from 'lucide-react';
 import { signIn, useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 
@@ -28,6 +28,8 @@ export default function AIRecommendation({
   const [checkingCache, setCheckingCache] = useState(false);
   const [savingToHistory, setSavingToHistory] = useState(false);
   const [savedToHistory, setSavedToHistory] = useState(false);
+  const [showOnlyValueBets, setShowOnlyValueBets] = useState(false);
+  const [showOnlyQualified, setShowOnlyQualified] = useState(false);
 
   useEffect(() => {
     if (!autoLoaded && fixture && fixtureId) {
@@ -226,6 +228,18 @@ export default function AIRecommendation({
     });
   };
 
+  const visibleTips = (recommendation?.dicas || []).filter((dica: any) => {
+    if (showOnlyQualified && !dica?.compatibilidade_perfil?.qualifica) {
+      return false;
+    }
+
+    if (showOnlyValueBets && !dica?.value_bet) {
+      return false;
+    }
+
+    return true;
+  });
+
   // Loading state
   if (loading || checkingCache) {
     return (
@@ -382,17 +396,84 @@ export default function AIRecommendation({
         </div>
       )}
 
+      {recommendation?.guidance?.valueBetSummary && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-emerald-200 bg-white p-5">
+            <div className="mb-3 flex items-center gap-2 text-emerald-700">
+              <TrendingUp className="h-5 w-5" />
+              <h4 className="font-bold">Value bets</h4>
+            </div>
+            <p className="text-2xl font-black text-slate-900">
+              {recommendation.guidance.valueBetSummary.valueBetCount}/{recommendation.guidance.valueBetSummary.totalTips}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">Picks com edge positivo acima da odd justa.</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="mb-3 flex items-center gap-2 text-slate-700">
+              <Filter className="h-5 w-5" />
+              <h4 className="font-bold">Seu filtro</h4>
+            </div>
+            <p className="text-2xl font-black text-slate-900">
+              {recommendation.guidance.valueBetSummary.profileQualifiedCount}
+            </p>
+            <p className="mt-1 text-sm text-slate-600">Picks que estão com valor e batem no seu perfil.</p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="mb-3 flex items-center gap-2 text-slate-700">
+              <BarChart3 className="h-5 w-5" />
+              <h4 className="font-bold">Melhor edge</h4>
+            </div>
+            <p className="text-2xl font-black text-slate-900">
+              {recommendation.guidance.valueBetSummary.bestEdge > 0 ? '+' : ''}{recommendation.guidance.valueBetSummary.bestEdge}%
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              Máximo ideal hoje: {recommendation.guidance.valueBetSummary.recommendedDailyLimit} entrada(s).
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Dicas de Apostas */}
       <div>
-        <div className="flex items-center space-x-2 mb-4">
-          <Target className="w-5 h-5 text-emerald-600" />
-          <h3 className="text-lg font-bold text-slate-900">
-            Dicas do Colt ({recommendation?.dicas?.length || 0} apostas)
-          </h3>
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center space-x-2">
+            <Target className="w-5 h-5 text-emerald-600" />
+            <h3 className="text-lg font-bold text-slate-900">
+              Dicas do Colt ({visibleTips.length}/{recommendation?.dicas?.length || 0} apostas)
+            </h3>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setShowOnlyValueBets((prev) => !prev)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+                showOnlyValueBets ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 border border-slate-200'
+              }`}
+            >
+              Só value bets
+            </button>
+            <button
+              onClick={() => setShowOnlyQualified((prev) => !prev)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${
+                showOnlyQualified ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 border border-slate-200'
+              }`}
+            >
+              Só no meu perfil
+            </button>
+          </div>
         </div>
 
         <div className="space-y-4">
-          {recommendation?.dicas?.map((dica: any, index: number) => (
+          {visibleTips.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+              <p className="font-semibold text-slate-800">Nenhuma pick bate com o filtro atual.</p>
+              <p className="mt-1 text-sm text-slate-600">Tente liberar o filtro ou gerar uma nova análise.</p>
+            </div>
+          )}
+
+          {visibleTips.map((dica: any, index: number) => (
             <div
               key={index}
               className="bg-white border-2 border-slate-200 rounded-xl overflow-hidden hover:border-emerald-300 hover:shadow-lg transition-all"
@@ -405,9 +486,16 @@ export default function AIRecommendation({
                   </span>
                   <span className="text-white font-bold">{dica?.mercado}</span>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getRiskColor(dica?.risco)}`}>
-                  Risco {dica?.risco}
-                </span>
+                <div className="flex items-center gap-2">
+                  {dica?.value_label && (
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${dica?.value_bet ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-slate-100 text-slate-700 border-slate-300'}`}>
+                      {dica?.value_label}
+                    </span>
+                  )}
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getRiskColor(dica?.risco)}`}>
+                    Risco {dica?.risco}
+                  </span>
+                </div>
               </div>
 
               {/* Dica Body */}
@@ -420,10 +508,18 @@ export default function AIRecommendation({
                 </div>
 
                 {/* Odd + Stake */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
                   <div className="bg-emerald-50 rounded-xl p-4 text-center">
                     <p className="text-xs text-emerald-700 font-semibold mb-1">ODD MÍNIMA</p>
                     <p className="text-3xl font-black text-emerald-700">{dica?.odd_minima}</p>
+                  </div>
+                  <div className="bg-sky-50 rounded-xl p-4 text-center">
+                    <p className="text-xs text-sky-700 font-semibold mb-1">ODD ATUAL</p>
+                    <p className="text-3xl font-black text-sky-700">{dica?.current_odd || '-'}</p>
+                  </div>
+                  <div className="bg-violet-50 rounded-xl p-4 text-center">
+                    <p className="text-xs text-violet-700 font-semibold mb-1">ODD JUSTA</p>
+                    <p className="text-3xl font-black text-violet-700">{dica?.odd_justa || '-'}</p>
                   </div>
                   <div className="bg-slate-50 rounded-xl p-4">
                     <p className="text-xs text-slate-600 font-semibold mb-2">STAKE ({dica?.stake}/10)</p>
@@ -437,6 +533,32 @@ export default function AIRecommendation({
                     </div>
                     <p className="text-xs text-slate-500 mt-1">
                       {(dica?.stake || 0) >= 7 ? 'Apostar forte' : (dica?.stake || 0) >= 4 ? 'Aposta moderada' : 'Aposta conservadora'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className={`rounded-xl border p-4 ${dica?.edge_percentual >= 2 ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Edge real</p>
+                    <p className={`mt-1 text-2xl font-black ${dica?.edge_percentual >= 2 ? 'text-emerald-700' : 'text-slate-800'}`}>
+                      {dica?.edge_percentual > 0 ? '+' : ''}{dica?.edge_percentual}%
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">Comparação entre odd atual e odd justa.</p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Probabilidade estimada</p>
+                    <p className="mt-1 text-2xl font-black text-slate-900">{dica?.probabilidade_estimada}%</p>
+                    <p className="mt-1 text-xs text-slate-600">Mercado precifica {dica?.probabilidade_implicita}% nesta odd.</p>
+                  </div>
+
+                  <div className={`rounded-xl border p-4 ${dica?.compatibilidade_perfil?.qualifica ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status no seu perfil</p>
+                    <p className={`mt-1 text-sm font-bold ${dica?.compatibilidade_perfil?.qualifica ? 'text-emerald-700' : 'text-amber-800'}`}>
+                      {dica?.compatibilidade_perfil?.qualifica ? 'Aprovada para entrada' : 'Precisa de cautela'}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {dica?.compatibilidade_perfil?.qualifica ? 'Combina valor e seus filtros pessoais.' : 'Veja os avisos antes de entrar.'}
                     </p>
                   </div>
                 </div>

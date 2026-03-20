@@ -30,6 +30,18 @@ interface RecommendationResult {
   [key: string]: any;
 }
 
+interface SavedPickLike {
+  selection?: string;
+  marketType?: string;
+  currentOddsAtPick?: any;
+  recommendedOddsMin?: any;
+}
+
+interface DecorationOptions {
+  odds?: any[] | null;
+  savedPicks?: SavedPickLike[] | null;
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -43,6 +55,16 @@ function normalizeRiskProfile(profile?: string | null) {
 function parseOdd(value: string | number | undefined) {
   const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value || '').replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 1.5;
+}
+
+function normalizeText(value?: string) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s.]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function normalizeMarketType(market?: string) {
@@ -133,9 +155,111 @@ function getStrategyLabel(riskProfile: string) {
   }
 }
 
+function matchSavedPick(tip: RecommendationTip, savedPicks?: SavedPickLike[] | null) {
+  if (!savedPicks?.length) {
+    return null;
+  }
+
+  const normalizedSelection = normalizeText(tip?.aposta);
+  const normalizedMarket = normalizeMarketType(tip?.mercado);
+
+  return savedPicks.find((pick) => {
+    const pickSelection = normalizeText(pick.selection);
+    const pickMarket = normalizeMarketType(pick.marketType);
+
+    return (
+      (normalizedSelection && pickSelection && normalizedSelection === pickSelection) ||
+      (normalizedSelection && pickSelection && (normalizedSelection.includes(pickSelection) || pickSelection.includes(normalizedSelection))) ||
+      (normalizedMarket !== 'OTHER' && normalizedMarket === pickMarket)
+    );
+  }) || null;
+}
+
+function resolveCurrentOdd(tip: RecommendationTip, options?: DecorationOptions) {
+  const directCurrentOdd = tip?.current_odd ?? tip?.currentOdd ?? tip?.currentOdds;
+  if (directCurrentOdd) {
+    return parseOdd(directCurrentOdd);
+  }
+
+  const savedPick = matchSavedPick(tip, options?.savedPicks);
+  if (savedPick?.currentOddsAtPick) {
+    return parseOdd(savedPick.currentOddsAtPick);
+  }
+
+  const firstBookmaker = options?.odds?.[0];
+  if (!firstBookmaker) {
+    return savedPick?.recommendedOddsMin ? parseOdd(savedPick.recommendedOddsMin) : null;
+  }
+
+  const selection = normalizeText(tip?.aposta);
+
+  if (selection.includes('empate') || selection.includes('draw')) {
+    return firstBookmaker.drawOdd ? parseOdd(firstBookmaker.drawOdd) : null;
+  }
+
+  if (
+    selection.includes('fora') ||
+    selection.includes('visitante') ||
+    selection.includes('away') ||
+    selection.includes('time de fora')
+  ) {
+    return firstBookmaker.awayOdd ? parseOdd(firstBookmaker.awayOdd) : null;
+  }
+
+  if (
+    selection.includes('casa') ||
+    selection.includes('mandante') ||
+    selection.includes('home') ||
+    selection.includes('time da casa') ||
+    selection.includes('vitoria') ||
+    selection.includes('vitória')
+  ) {
+    if (!selection.includes('fora') && !selection.includes('visitante') && !selection.includes('away')) {
+      return firstBookmaker.homeOdd ? parseOdd(firstBookmaker.homeOdd) : null;
+    }
+  }
+
+  if (selection.includes('over') || selection.includes('acima')) {
+    return firstBookmaker.overOdd ? parseOdd(firstBookmaker.overOdd) : null;
+  }
+
+  if (selection.includes('under') || selection.includes('abaixo')) {
+    return firstBookmaker.underOdd ? parseOdd(firstBookmaker.underOdd) : null;
+  }
+
+  return savedPick?.recommendedOddsMin ? parseOdd(savedPick.recommendedOddsMin) : null;
+}
+
+function getEstimatedProbability(tip: RecommendationTip, overallConfidence: number) {
+  if (tip?.probabilidade_estimada) {
+    const raw = Number(tip.probabilidade_estimada);
+    if (Number.isFinite(raw)) {
+      return clamp(raw > 1 ? raw / 100 : raw, 0.12, 0.88);
+    }
+  }
+
+  const minimumOdd = parseOdd(tip?.odd_minima);
+  const baselineProbability = clamp(1 / minimumOdd, 0.12, 0.88);
+  const confidenceAdjustment = ((overallConfidence - 50) / 50) * 0.08;
+  const riskLevel = normalizeText(tip?.risco);
+  const riskAdjustment = riskLevel.includes('baixo') ? 0.03 : riskLevel.includes('alto') ? -0.04 : 0;
+  const marketType = normalizeMarketType(tip?.mercado);
+  const marketAdjustment = marketType === '1X2' ? -0.01 : marketType === 'BTTS' ? -0.015 : 0.01;
+
+  return clamp(baselineProbability + confidenceAdjustment + riskAdjustment + marketAdjustment, 0.12, 0.88);
+}
+
+function getEdgeLabel(edgePercent: number) {
+  if (edgePercent >= 8) return 'Muito valor';
+  if (edgePercent >= 3) return 'Com valor';
+  if (edgePercent > -2) return 'Neutra';
+  return 'Sem valor';
+}
+
 export function decorateRecommendationResult(
   result: RecommendationResult,
-  profile?: RecommendationUserProfile | null
+  profile?: RecommendationUserProfile | null,
+  options?: DecorationOptions
 ) {
   const confidence = clamp(Number(result?.confianca || 0), 0, 100);
   const riskProfile = normalizeRiskProfile(profile?.riskProfile);
@@ -149,6 +273,12 @@ export function decorateRecommendationResult(
     ? result.dicas.map((tip) => {
         const odd = parseOdd(tip?.odd_minima);
         const marketType = normalizeMarketType(tip?.mercado);
+        const currentOdd = resolveCurrentOdd(tip, options);
+        const estimatedProbability = getEstimatedProbability(tip, confidence);
+        const fairOdd = Number((1 / estimatedProbability).toFixed(2));
+        const edgeBaseOdd = currentOdd || odd;
+        const edgePercent = Number((((edgeBaseOdd / fairOdd) - 1) * 100).toFixed(2));
+        const impliedProbability = Number(((1 / edgeBaseOdd) * 100).toFixed(1));
         const baseStake = clamp(Number(tip?.stake || 5), 1, 10);
         const adjustedUnits = clamp(
           Math.round(
@@ -157,7 +287,8 @@ export function decorateRecommendationResult(
               getConfidenceAdjustment(confidence) +
               getRiskPenalty(String(tip?.risco || '')) +
               getOddsAdjustment(odd) +
-              (preferredMarkets.includes(marketType) ? 1 : 0)
+              (preferredMarkets.includes(marketType) ? 1 : 0) +
+              (edgePercent >= 5 ? 1 : edgePercent <= -3 ? -1 : 0)
           ),
           1,
           10
@@ -179,9 +310,22 @@ export function decorateRecommendationResult(
           profileWarnings.push('Fora dos mercados que você marcou como preferidos.');
         }
 
+        if (edgePercent < 2) {
+          profileWarnings.push('Sem margem clara de valor acima da odd justa.');
+        }
+
+        const qualifiesForUser = edgePercent >= 2 && profileWarnings.length === 0;
+
         return {
           ...tip,
           odd_minima: odd.toFixed(2),
+          current_odd: currentOdd ? currentOdd.toFixed(2) : null,
+          probabilidade_estimada: Number((estimatedProbability * 100).toFixed(1)),
+          odd_justa: fairOdd.toFixed(2),
+          edge_percentual: edgePercent,
+          probabilidade_implicita: impliedProbability,
+          value_bet: edgePercent >= 2,
+          value_label: getEdgeLabel(edgePercent),
           stake_sugerida: {
             unidades: adjustedUnits,
             percentual_banca: bankrollPercent,
@@ -191,6 +335,7 @@ export function decorateRecommendationResult(
           },
           compatibilidade_perfil: {
             ok: profileWarnings.length === 0,
+            qualifica: qualifiesForUser,
             avisos: profileWarnings,
           },
         };
@@ -200,6 +345,9 @@ export function decorateRecommendationResult(
   const stakeUnits = tips.map((tip) => tip?.stake_sugerida?.unidades || 0);
   const strongestStake = stakeUnits.length > 0 ? Math.max(...stakeUnits) : 0;
   const averageStake = stakeUnits.length > 0 ? Number((stakeUnits.reduce((sum, value) => sum + value, 0) / stakeUnits.length).toFixed(1)) : 0;
+  const valueBetCount = tips.filter((tip) => tip?.value_bet).length;
+  const profileQualifiedCount = tips.filter((tip) => tip?.compatibilidade_perfil?.qualifica).length;
+  const bestEdge = tips.length > 0 ? Math.max(...tips.map((tip) => Number(tip?.edge_percentual || 0))) : 0;
 
   return {
     ...result,
@@ -213,6 +361,13 @@ export function decorateRecommendationResult(
         unitValue: bankrollUnitValue,
         strongestStake,
         averageStake,
+      },
+      valueBetSummary: {
+        totalTips: tips.length,
+        valueBetCount,
+        profileQualifiedCount,
+        bestEdge: Number(bestEdge.toFixed(2)),
+        recommendedDailyLimit: profile?.maxPicksPerDay || Math.min(3, Math.max(1, profileQualifiedCount || valueBetCount || 1)),
       },
       recommendationNote:
         bankrollEstimate
