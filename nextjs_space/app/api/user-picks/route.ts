@@ -17,6 +17,17 @@ interface SettledTrackedPickEntry {
   };
 }
 
+interface PerformanceRow {
+  label: string;
+  total: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  winRate: number;
+  totalProfitUnits: number;
+  roi: number;
+}
+
 function buildRanking(entries: SettledTrackedPickEntry[], key: 'league' | 'marketType') {
   const grouped = new Map<string, {
     label: string;
@@ -82,6 +93,57 @@ function buildRanking(entries: SettledTrackedPickEntry[], key: 'league' | 'marke
   };
 }
 
+function buildPerformanceAlerts(rankings: {
+  marketsTop: PerformanceRow[];
+  marketsBottom: PerformanceRow[];
+  leaguesTop: PerformanceRow[];
+  leaguesBottom: PerformanceRow[];
+}) {
+  const alerts: Array<{
+    type: 'warning' | 'success' | 'info';
+    title: string;
+    message: string;
+  }> = [];
+
+  const weakMarket = rankings.marketsBottom.find((item) => item.total >= 3 && item.roi <= -12);
+  if (weakMarket) {
+    alerts.push({
+      type: 'warning',
+      title: 'Reduza exposição nesse mercado',
+      message: `${weakMarket.label.replace(/_/g, ' ')} está com ROI de ${weakMarket.roi}% em ${weakMarket.total} picks. O ideal é baixar stake ou evitar esse mercado por enquanto.`,
+    });
+  }
+
+  const weakLeague = rankings.leaguesBottom.find((item) => item.total >= 3 && item.roi <= -10);
+  if (weakLeague) {
+    alerts.push({
+      type: 'warning',
+      title: 'Liga em zona de atenção',
+      message: `${weakLeague.label.replace(/_/g, ' ')} está drenando ${Math.abs(weakLeague.totalProfitUnits).toFixed(2)}u. Vale selecionar menos entradas nessa liga até o desempenho reagir.`,
+    });
+  }
+
+  const strongMarket = rankings.marketsTop.find((item) => item.total >= 3 && item.roi >= 10);
+  if (strongMarket) {
+    alerts.push({
+      type: 'success',
+      title: 'Mercado quente para priorizar',
+      message: `${strongMarket.label.replace(/_/g, ' ')} está com ROI de +${strongMarket.roi}% e win rate de ${strongMarket.winRate}%. Pode ser um mercado para priorizar nas próximas entradas.`,
+    });
+  }
+
+  const strongLeague = rankings.leaguesTop.find((item) => item.total >= 3 && item.roi >= 8);
+  if (strongLeague) {
+    alerts.push({
+      type: 'info',
+      title: 'Liga com boa leitura',
+      message: `${strongLeague.label.replace(/_/g, ' ')} vem entregando ROI de +${strongLeague.roi}%. Se o edge continuar bom, vale manter foco nela.`,
+    });
+  }
+
+  return alerts.slice(0, 4);
+}
+
 function buildStats(trackedPicks: any[]) {
   const total = trackedPicks.length;
   const pending = trackedPicks.filter((entry) => entry.coltPick.status === 'PENDING').length;
@@ -94,6 +156,12 @@ function buildStats(trackedPicks: any[]) {
   const totalStakeUnits = settledEntries.reduce((sum, entry) => sum + Number(entry.coltPick.stakeUnits || 0), 0);
   const marketRanking = buildRanking(settledEntries, 'marketType');
   const leagueRanking = buildRanking(settledEntries, 'league');
+  const ranking = {
+    marketsTop: marketRanking.top,
+    marketsBottom: marketRanking.bottom,
+    leaguesTop: leagueRanking.top,
+    leaguesBottom: leagueRanking.bottom,
+  };
 
   return {
     total,
@@ -105,12 +173,8 @@ function buildStats(trackedPicks: any[]) {
     winRate: settled > 0 ? parseFloat(((wins / settled) * 100).toFixed(1)) : 0,
     totalProfitUnits: parseFloat(totalProfitUnits.toFixed(2)),
     roi: totalStakeUnits > 0 ? Number(((totalProfitUnits / totalStakeUnits) * 100).toFixed(1)) : 0,
-    ranking: {
-      marketsTop: marketRanking.top,
-      marketsBottom: marketRanking.bottom,
-      leaguesTop: leagueRanking.top,
-      leaguesBottom: leagueRanking.bottom,
-    },
+    ranking,
+    performanceAlerts: buildPerformanceAlerts(ranking),
   };
 }
 

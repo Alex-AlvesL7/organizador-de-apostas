@@ -25,6 +25,11 @@ interface PickStats {
     leaguesTop: PerformanceRow[];
     leaguesBottom: PerformanceRow[];
   };
+  performanceAlerts: {
+    type: 'warning' | 'success' | 'info';
+    title: string;
+    message: string;
+  }[];
 }
 
 interface PerformanceRow {
@@ -285,6 +290,33 @@ export default function TrackingDashboard() {
     );
   };
 
+  const getPerformanceAlertStyles = (type: 'warning' | 'success' | 'info') => {
+    if (type === 'warning') {
+      return {
+        wrapper: 'border-amber-200 bg-amber-50',
+        icon: <AlertTriangle className="w-5 h-5 text-amber-600" />,
+        title: 'text-amber-900',
+        message: 'text-amber-800',
+      };
+    }
+
+    if (type === 'success') {
+      return {
+        wrapper: 'border-emerald-200 bg-emerald-50',
+        icon: <TrendingUp className="w-5 h-5 text-emerald-600" />,
+        title: 'text-emerald-900',
+        message: 'text-emerald-800',
+      };
+    }
+
+    return {
+      wrapper: 'border-sky-200 bg-sky-50',
+      icon: <Shield className="w-5 h-5 text-sky-600" />,
+      title: 'text-sky-900',
+      message: 'text-sky-800',
+    };
+  };
+
   return (
     <div>
       <Toaster position="top-right" />
@@ -327,8 +359,29 @@ export default function TrackingDashboard() {
       )}
 
       {sessionStatus === 'authenticated' && stats?.ranking && activeTab === 'picks' && (
-        <div className="grid gap-4 lg:grid-cols-2 mb-6">
-          <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+        <>
+          {stats.performanceAlerts?.length > 0 && (
+            <div className="grid gap-4 mb-6 md:grid-cols-2">
+              {stats.performanceAlerts.map((alert, index) => {
+                const styles = getPerformanceAlertStyles(alert.type);
+
+                return (
+                  <div key={`${alert.title}-${index}`} className={`rounded-xl border p-4 shadow-sm ${styles.wrapper}`}>
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5">{styles.icon}</div>
+                      <div>
+                        <h3 className={`font-bold ${styles.title}`}>{alert.title}</h3>
+                        <p className={`mt-1 text-sm ${styles.message}`}>{alert.message}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-2 mb-6">
+            <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-emerald-600" />
               <div>
@@ -348,7 +401,7 @@ export default function TrackingDashboard() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <Trophy className="w-5 h-5 text-amber-500" />
               <div>
@@ -366,8 +419,9 @@ export default function TrackingDashboard() {
                 {renderPerformanceList(stats.ranking.leaguesBottom, 'Sem dados suficientes para apontar fraquezas.')}
               </div>
             </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Tabs */}
