@@ -7,6 +7,61 @@ export const dynamic = 'force-dynamic';
 
 const aiModels = getAiModels();
 
+function rebuildCachedResultFromPicks(existingPicks: any[]) {
+  return {
+    veredito: existingPicks[0].reasoning.substring(0, 100) + '...',
+    confianca: existingPicks[0].confidence,
+    dicas: existingPicks.map((p) => ({
+      mercado: p.marketType,
+      aposta: p.selection,
+      odd_minima: Number(p.recommendedOddsMin).toFixed(2),
+      stake: p.stakeUnits,
+      risco: p.riskLevel === 'LOW' ? 'Baixo' : p.riskLevel === 'HIGH' ? 'Alto' : 'Médio',
+      motivo: p.reasoning,
+    })),
+    analise_colt: existingPicks[0].reasoning,
+    alerta: null,
+    placar_provavel: null,
+    resumo_rapido: null,
+  };
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const fixtureId = searchParams.get('fixtureId');
+
+    if (!fixtureId) {
+      return NextResponse.json({ error: 'fixtureId is required' }, { status: 400 });
+    }
+
+    const matchId = String(fixtureId);
+
+    const existingAnalysis = await prisma.coltAnalysis.findUnique({
+      where: { matchId },
+    }).catch(() => null);
+
+    if (existingAnalysis?.rawResult) {
+      return NextResponse.json({ cached: true, result: existingAnalysis.rawResult });
+    }
+
+    const existingPicks = await prisma.coltPick.findMany({
+      where: { matchId },
+      include: { result: true },
+      orderBy: { createdAt: 'desc' },
+    }).catch(() => []);
+
+    if (existingPicks.length > 0) {
+      return NextResponse.json({ cached: true, result: rebuildCachedResultFromPicks(existingPicks) });
+    }
+
+    return NextResponse.json({ cached: false, result: null }, { status: 404 });
+  } catch (error: any) {
+    console.error('Recommendation cache API error:', error);
+    return NextResponse.json({ error: error?.message || 'Failed to fetch cached recommendation' }, { status: 500 });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { fixtureId, fixture, odds, statistics, h2h, forceNew } = await request.json();
@@ -52,22 +107,7 @@ export async function POST(request: NextRequest) {
 
       if (existingPicks.length > 0) {
         console.log(`[Cache HIT] Rebuilding response from ${existingPicks.length} ColtPicks for match ${matchId}`);
-        const rebuiltResult = {
-          veredito: existingPicks[0].reasoning.substring(0, 100) + '...',
-          confianca: existingPicks[0].confidence,
-          dicas: existingPicks.map(p => ({
-            mercado: p.marketType,
-            aposta: p.selection,
-            odd_minima: Number(p.recommendedOddsMin).toFixed(2),
-            stake: p.stakeUnits,
-            risco: p.riskLevel === 'LOW' ? 'Baixo' : p.riskLevel === 'HIGH' ? 'Alto' : 'Médio',
-            motivo: p.reasoning,
-          })),
-          analise_colt: existingPicks[0].reasoning,
-          alerta: null,
-          placar_provavel: null,
-          resumo_rapido: null,
-        };
+        const rebuiltResult = rebuildCachedResultFromPicks(existingPicks);
 
         const stream = new ReadableStream({
           start(controller) {

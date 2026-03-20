@@ -7,6 +7,7 @@ import {
   Minus, Send, MessageSquare, BarChart3, Crosshair, Shield, Flame,
   AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Zap
 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import toast, { Toaster } from 'react-hot-toast';
 
 interface RoomContentProps {
@@ -14,6 +15,7 @@ interface RoomContentProps {
 }
 
 export default function RoomContent({ matchId }: RoomContentProps) {
+  const { data: session } = useSession();
   const [fixture, setFixture] = useState<any>(null);
   const [analysis, setAnalysis] = useState<any>(null);
   const [picks, setPicks] = useState<any[]>([]);
@@ -148,7 +150,7 @@ export default function RoomContent({ matchId }: RoomContentProps) {
       const res = await fetch('/api/room/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matchId, message: msg }),
+        body: JSON.stringify({ matchId, message: msg, userId: session?.user?.id || null }),
       });
       const data = await res.json();
       if (data.message) {

@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import {
   Trophy, Target, TrendingUp, TrendingDown, AlertTriangle, Clock,
   CheckCircle, XCircle, Minus, BarChart3, Bell, User, RefreshCw,
-  ChevronDown, ChevronUp, Zap, Shield, Flame, Eye, EyeOff
+  ChevronDown, ChevronUp, Zap, Shield, Flame, Eye, EyeOff, LogIn
 } from 'lucide-react';
+import { signIn, useSession } from 'next-auth/react';
 import toast, { Toaster } from 'react-hot-toast';
 
 interface PickStats {
@@ -66,6 +67,7 @@ interface Alert {
 }
 
 export default function TrackingDashboard() {
+  const { status: sessionStatus } = useSession();
   const [activeTab, setActiveTab] = useState<'picks' | 'alerts' | 'profile'>('picks');
   const [picks, setPicks] = useState<ColtPick[]>([]);
   const [stats, setStats] = useState<PickStats | null>(null);
@@ -78,16 +80,33 @@ export default function TrackingDashboard() {
   const [autoSettling, setAutoSettling] = useState(false);
 
   useEffect(() => {
-    fetchPicks();
     fetchAlerts();
-  }, [filterStatus]);
+  }, []);
+
+  useEffect(() => {
+    if (sessionStatus === 'authenticated') {
+      fetchPicks();
+      return;
+    }
+
+    if (sessionStatus === 'unauthenticated') {
+      setPicks([]);
+      setStats(null);
+      setLoading(false);
+    }
+  }, [filterStatus, sessionStatus]);
 
   async function fetchPicks() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (filterStatus) params.set('status', filterStatus);
-      const res = await fetch(`/api/colt-picks?${params.toString()}`);
+      const res = await fetch(`/api/user-picks?${params.toString()}`);
+      if (res.status === 401) {
+        setPicks([]);
+        setStats(null);
+        return;
+      }
       const data = await res.json();
       setPicks(data.picks || []);
       setStats(data.stats || null);
@@ -226,7 +245,7 @@ export default function TrackingDashboard() {
       <Toaster position="top-right" />
 
       {/* Stats Cards */}
-      {stats && (
+      {sessionStatus === 'authenticated' && stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
             <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
@@ -289,6 +308,23 @@ export default function TrackingDashboard() {
       {/* PICKS TAB */}
       {activeTab === 'picks' && (
         <div>
+          {sessionStatus === 'unauthenticated' ? (
+            <div className="bg-white rounded-xl p-12 text-center shadow-sm border border-slate-100">
+              <LogIn className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Entre para salvar suas apostas</h3>
+              <p className="text-slate-600 max-w-md mx-auto mb-5">
+                Faça login com Google para manter seu histórico de picks e acompanhar os acertos e erros do Colt na sua conta.
+              </p>
+              <button
+                onClick={() => signIn('google', { callbackUrl: '/tracking' })}
+                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700"
+              >
+                <LogIn className="w-4 h-4" />
+                Entrar com Google
+              </button>
+            </div>
+          ) : (
+            <>
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <select
               value={filterStatus}
@@ -423,6 +459,8 @@ export default function TrackingDashboard() {
               ))}
             </div>
           )}
+            </>
+          )}
         </div>
       )}
 
@@ -510,6 +548,7 @@ export default function TrackingDashboard() {
 // USER PROFILE TAB
 // ============================================================
 function UserProfileTab() {
+  const { status: sessionStatus } = useSession();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -529,8 +568,15 @@ function UserProfileTab() {
   const markets = ['1X2', 'OVER_UNDER', 'BTTS', 'HANDICAP'];
 
   useEffect(() => {
-    fetchProfile();
-  }, []);
+    if (sessionStatus === 'authenticated') {
+      fetchProfile();
+      return;
+    }
+
+    if (sessionStatus === 'unauthenticated') {
+      setLoading(false);
+    }
+  }, [sessionStatus]);
 
   async function fetchProfile() {
     try {
@@ -588,6 +634,25 @@ function UserProfileTab() {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="animate-spin rounded-full h-8 w-8 border-4 border-emerald-500 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (sessionStatus === 'unauthenticated') {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-10 text-center">
+        <User className="w-12 h-12 text-emerald-500 mx-auto mb-4" />
+        <h3 className="text-lg font-bold text-slate-900 mb-2">Entre para salvar seu perfil</h3>
+        <p className="text-slate-600 mb-5">
+          Seu perfil de banca e preferências ficará salvo na sua conta Google.
+        </p>
+        <button
+          onClick={() => signIn('google', { callbackUrl: '/tracking' })}
+          className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700"
+        >
+          <LogIn className="w-4 h-4" />
+          Entrar com Google
+        </button>
       </div>
     );
   }

@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import TrackingDashboard from './tracking-dashboard';
+import AuthButton from '@/components/auth-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ export default function TrackingPage() {
             Voltar aos jogos
           </Link>
           <h1 className="text-lg font-bold text-slate-800">Tracking do Colt</h1>
-          <div className="w-24" />
+          <AuthButton />
         </div>
       </header>
 

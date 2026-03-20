@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Flame, Target, AlertTriangle, Shield, TrendingUp, Zap, ChevronRight, RefreshCw, Trophy, Crosshair } from 'lucide-react';
+import { Flame, Target, AlertTriangle, Shield, RefreshCw, Crosshair, BookmarkPlus, CheckCircle2, LogIn } from 'lucide-react';
+import { signIn, useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 
 interface AIRecommendationProps {
@@ -19,25 +20,78 @@ export default function AIRecommendation({
   statistics,
   h2h,
 }: AIRecommendationProps) {
+  const { data: session, status: sessionStatus } = useSession();
   const [recommendation, setRecommendation] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [autoLoaded, setAutoLoaded] = useState(false);
+  const [checkingCache, setCheckingCache] = useState(false);
+  const [savingToHistory, setSavingToHistory] = useState(false);
+  const [savedToHistory, setSavedToHistory] = useState(false);
 
-  // Auto-generate recommendation on mount
   useEffect(() => {
     if (!autoLoaded && fixture && fixtureId) {
       setAutoLoaded(true);
-      generateRecommendation();
+      void loadExistingRecommendation();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fixture, fixtureId]);
 
-  const generateRecommendation = async () => {
+  useEffect(() => {
+    if (sessionStatus !== 'authenticated' || !fixtureId || !recommendation) {
+      setSavedToHistory(false);
+      return;
+    }
+
+    void checkSavedStatus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionStatus, fixtureId, recommendation]);
+
+  const loadExistingRecommendation = async () => {
+    try {
+      setCheckingCache(true);
+      const response = await fetch(`/api/recommendation?fixtureId=${fixtureId}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data?.result) {
+          setRecommendation(data.result);
+          return;
+        }
+      }
+
+      await generateRecommendation();
+    } catch (error) {
+      console.error('Error loading cached recommendation:', error);
+      await generateRecommendation();
+    } finally {
+      setCheckingCache(false);
+    }
+  };
+
+  const checkSavedStatus = async () => {
+    try {
+      const response = await fetch(`/api/user-picks?matchId=${fixtureId}`);
+      if (!response.ok) {
+        setSavedToHistory(false);
+        return;
+      }
+
+      const data = await response.json();
+      setSavedToHistory(Boolean(data?.saved));
+    } catch (error) {
+      console.error('Error checking saved picks:', error);
+      setSavedToHistory(false);
+    }
+  };
+
+  const generateRecommendation = async (forceNew = false) => {
     try {
       setLoading(true);
       setProgress(0);
-      setRecommendation(null);
+      if (forceNew || !recommendation) {
+        setRecommendation(null);
+      }
 
       const response = await fetch('/api/recommendation', {
         method: 'POST',
@@ -48,6 +102,7 @@ export default function AIRecommendation({
           odds,
           statistics,
           h2h,
+          forceNew,
         }),
       });
 
@@ -100,6 +155,40 @@ export default function AIRecommendation({
     }
   };
 
+  const savePicksToHistory = async () => {
+    if (sessionStatus !== 'authenticated') {
+      await signIn('google', { callbackUrl: `/fixture/${fixtureId}` });
+      return;
+    }
+
+    try {
+      setSavingToHistory(true);
+      const response = await fetch('/api/user-picks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ matchId: fixtureId }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || 'Não foi possível salvar suas apostas');
+      }
+
+      setSavedToHistory(true);
+
+      if (data.savedCount > 0) {
+        toast.success(`${data.savedCount} aposta(s) salva(s) no seu histórico.`);
+      } else {
+        toast.success('Essas apostas já estavam salvas no seu histórico.');
+      }
+    } catch (error: any) {
+      console.error('Error saving picks:', error);
+      toast.error(error?.message || 'Erro ao salvar apostas no histórico.');
+    } finally {
+      setSavingToHistory(false);
+    }
+  };
+
   const getConfidenceColor = (conf: number) => {
     if (conf >= 80) return 'from-emerald-500 to-green-600';
     if (conf >= 60) return 'from-yellow-500 to-orange-500';
@@ -124,7 +213,7 @@ export default function AIRecommendation({
   };
 
   // Loading state
-  if (loading) {
+  if (loading || checkingCache) {
     return (
       <div className="py-12">
         <div className="max-w-md mx-auto text-center">
@@ -134,10 +223,10 @@ export default function AIRecommendation({
             </div>
           </div>
           <h3 className="text-xl font-bold text-slate-900 mb-2">
-            🎯 O Colt está analisando...
+            {checkingCache ? '🧠 Buscando análise salva...' : '🎯 O Colt está analisando...'}
           </h3>
           <p className="text-slate-500 text-sm mb-6">
-            Cruzando estatísticas, odds, histórico e tendências
+            {checkingCache ? 'Verificando se este jogo já foi analisado anteriormente.' : 'Cruzando estatísticas, odds, histórico e tendências'}
           </p>
           <div className="h-3 bg-slate-200 rounded-full overflow-hidden mb-2">
             <div
@@ -165,7 +254,7 @@ export default function AIRecommendation({
           O Colt vai analisar tudo e te dar as melhores dicas de apostas para este jogo.
         </p>
         <button
-          onClick={generateRecommendation}
+          onClick={() => generateRecommendation()}
           className="inline-flex items-center space-x-2 px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-bold text-lg hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg hover:shadow-xl"
         >
           <Crosshair className="w-6 h-6" />
@@ -287,6 +376,37 @@ export default function AIRecommendation({
         </div>
       </div>
 
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h4 className="font-bold text-slate-900">Salvar apostas no seu histórico</h4>
+            <p className="text-sm text-slate-600">
+              Entre com Google para acompanhar os acertos e erros das picks do Colt na sua conta.
+            </p>
+          </div>
+          <button
+            onClick={savePicksToHistory}
+            disabled={savingToHistory || savedToHistory}
+            className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
+              savedToHistory
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-slate-900 text-white hover:bg-slate-800'
+            } disabled:cursor-not-allowed disabled:opacity-70`}
+          >
+            {savedToHistory ? <CheckCircle2 className="h-4 w-4" /> : sessionStatus === 'authenticated' ? <BookmarkPlus className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+            <span>
+              {savedToHistory
+                ? 'Apostas já salvas'
+                : savingToHistory
+                ? 'Salvando...'
+                : sessionStatus === 'authenticated'
+                ? 'Salvar picks no meu histórico'
+                : 'Entrar com Google'}
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* Análise Completa do Colt */}
       <div className="bg-gradient-to-br from-slate-50 to-emerald-50/50 rounded-2xl p-6 border border-slate-200">
         <div className="flex items-center space-x-2 mb-4">
@@ -314,7 +434,7 @@ export default function AIRecommendation({
       {/* Refresh */}
       <div className="text-center pt-2">
         <button
-          onClick={generateRecommendation}
+          onClick={() => generateRecommendation(true)}
           className="inline-flex items-center space-x-2 px-5 py-2.5 bg-slate-100 text-slate-700 rounded-lg font-medium text-sm hover:bg-slate-200 transition-colors"
         >
           <RefreshCw className="w-4 h-4" />

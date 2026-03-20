@@ -1,16 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 const DEFAULT_USER_ID = 'default-user';
 
+async function getResolvedUserId(request: NextRequest, bodyUserId?: string | null) {
+  const session = await getServerSession(authOptions);
+
+  if (session?.user?.id) {
+    return session.user.id;
+  }
+
+  if (bodyUserId) {
+    return bodyUserId;
+  }
+
+  const { searchParams } = new URL(request.url);
+  return searchParams.get('userId') || DEFAULT_USER_ID;
+}
+
 // GET: Fetch user profile
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId') || DEFAULT_USER_ID;
+    const userId = await getResolvedUserId(request);
 
     let profile = await prisma.userProfile.findUnique({
       where: { userId },
@@ -46,7 +62,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const userId = body.userId || DEFAULT_USER_ID;
+    const userId = await getResolvedUserId(request, body.userId || null);
 
     const updateData: any = {};
     if (body.bankrollEstimate !== undefined) updateData.bankrollEstimate = body.bankrollEstimate ? new Prisma.Decimal(body.bankrollEstimate) : null;

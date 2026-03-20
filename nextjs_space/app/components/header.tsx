@@ -3,6 +3,7 @@
 import { Trophy, Target, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import AuthButton from '@/components/auth-button';
 
 export default function Header() {
   const pathname = usePathname();
@@ -44,6 +45,7 @@ export default function Header() {
               <Target className="w-4 h-4" />
               <span className="hidden sm:inline">Tracking</span>
             </Link>
+            <AuthButton />
           </div>
         </div>
       </div>

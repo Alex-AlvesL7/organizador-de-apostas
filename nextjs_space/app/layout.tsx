@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
+import AuthSessionProvider from '@/components/auth-session-provider';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,8 +34,10 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
       </head>
       <body className="font-sans">
-        <Toaster position="top-center" />
-        {children}
+        <AuthSessionProvider>
+          <Toaster position="top-center" />
+          {children}
+        </AuthSessionProvider>
       </body>
     </html>
   );
