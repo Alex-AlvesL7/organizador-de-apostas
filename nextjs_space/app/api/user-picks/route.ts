@@ -5,6 +5,83 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+interface SettledTrackedPickEntry {
+  coltPick: {
+    league: string;
+    marketType: string;
+    stakeUnits: number;
+    result?: {
+      result: string;
+      profitUnits: any;
+    } | null;
+  };
+}
+
+function buildRanking(entries: SettledTrackedPickEntry[], key: 'league' | 'marketType') {
+  const grouped = new Map<string, {
+    label: string;
+    total: number;
+    wins: number;
+    losses: number;
+    pushes: number;
+    totalProfitUnits: number;
+    totalStakeUnits: number;
+  }>();
+
+  for (const entry of entries) {
+    const label = entry.coltPick[key] || 'OUTROS';
+    const existing = grouped.get(label) || {
+      label,
+      total: 0,
+      wins: 0,
+      losses: 0,
+      pushes: 0,
+      totalProfitUnits: 0,
+      totalStakeUnits: 0,
+    };
+
+    existing.total += 1;
+    existing.totalProfitUnits += Number(entry.coltPick.result?.profitUnits || 0);
+    existing.totalStakeUnits += Number(entry.coltPick.stakeUnits || 0);
+
+    if (entry.coltPick.result?.result === 'WIN') existing.wins += 1;
+    else if (entry.coltPick.result?.result === 'LOSS') existing.losses += 1;
+    else existing.pushes += 1;
+
+    grouped.set(label, existing);
+  }
+
+  const items = Array.from(grouped.values()).map((item) => {
+    const settled = item.total;
+    const winRate = settled > 0 ? Number(((item.wins / settled) * 100).toFixed(1)) : 0;
+    const roi = item.totalStakeUnits > 0
+      ? Number(((item.totalProfitUnits / item.totalStakeUnits) * 100).toFixed(1))
+      : 0;
+
+    return {
+      label: item.label,
+      total: item.total,
+      wins: item.wins,
+      losses: item.losses,
+      pushes: item.pushes,
+      winRate,
+      totalProfitUnits: Number(item.totalProfitUnits.toFixed(2)),
+      roi,
+    };
+  });
+
+  const sorted = [...items].sort((a, b) => {
+    if (b.roi !== a.roi) return b.roi - a.roi;
+    if (b.winRate !== a.winRate) return b.winRate - a.winRate;
+    return b.total - a.total;
+  });
+
+  return {
+    top: sorted.slice(0, 5),
+    bottom: [...sorted].reverse().slice(0, 5),
+  };
+}
+
 function buildStats(trackedPicks: any[]) {
   const total = trackedPicks.length;
   const pending = trackedPicks.filter((entry) => entry.coltPick.status === 'PENDING').length;
@@ -14,6 +91,9 @@ function buildStats(trackedPicks: any[]) {
   const losses = settledEntries.filter((entry) => entry.coltPick.result?.result === 'LOSS').length;
   const pushes = settledEntries.filter((entry) => ['PUSH', 'VOID'].includes(entry.coltPick.result?.result)).length;
   const totalProfitUnits = settledEntries.reduce((sum, entry) => sum + Number(entry.coltPick.result?.profitUnits || 0), 0);
+  const totalStakeUnits = settledEntries.reduce((sum, entry) => sum + Number(entry.coltPick.stakeUnits || 0), 0);
+  const marketRanking = buildRanking(settledEntries, 'marketType');
+  const leagueRanking = buildRanking(settledEntries, 'league');
 
   return {
     total,
@@ -24,6 +104,13 @@ function buildStats(trackedPicks: any[]) {
     pushes,
     winRate: settled > 0 ? parseFloat(((wins / settled) * 100).toFixed(1)) : 0,
     totalProfitUnits: parseFloat(totalProfitUnits.toFixed(2)),
+    roi: totalStakeUnits > 0 ? Number(((totalProfitUnits / totalStakeUnits) * 100).toFixed(1)) : 0,
+    ranking: {
+      marketsTop: marketRanking.top,
+      marketsBottom: marketRanking.bottom,
+      leaguesTop: leagueRanking.top,
+      leaguesBottom: leagueRanking.bottom,
+    },
   };
 }
 

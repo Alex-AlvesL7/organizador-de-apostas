@@ -18,6 +18,24 @@ interface PickStats {
   pushes: number;
   winRate: number;
   totalProfitUnits: number;
+  roi: number;
+  ranking: {
+    marketsTop: PerformanceRow[];
+    marketsBottom: PerformanceRow[];
+    leaguesTop: PerformanceRow[];
+    leaguesBottom: PerformanceRow[];
+  };
+}
+
+interface PerformanceRow {
+  label: string;
+  total: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  winRate: number;
+  totalProfitUnits: number;
+  roi: number;
 }
 
 interface ColtPick {
@@ -240,6 +258,33 @@ export default function TrackingDashboard() {
     );
   };
 
+  const renderPerformanceList = (items: PerformanceRow[], emptyLabel: string) => {
+    if (!items.length) {
+      return <p className="text-sm text-slate-400">{emptyLabel}</p>;
+    }
+
+    return (
+      <div className="space-y-3">
+        {items.map((item) => (
+          <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">{item.label.replace(/_/g, ' ')}</p>
+              <p className="text-xs text-slate-500">
+                {item.total} pick(s) • {item.wins}W/{item.losses}L/{item.pushes}P
+              </p>
+            </div>
+            <div className="text-right">
+              <p className={`text-sm font-bold ${item.totalProfitUnits >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {item.totalProfitUnits >= 0 ? '+' : ''}{item.totalProfitUnits.toFixed(2)}u
+              </p>
+              <p className="text-xs text-slate-500">ROI {item.roi >= 0 ? '+' : ''}{item.roi}% • WR {item.winRate}%</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div>
       <Toaster position="top-right" />
@@ -269,6 +314,7 @@ export default function TrackingDashboard() {
             <div className={`text-2xl font-bold ${stats.totalProfitUnits >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
               {stats.totalProfitUnits >= 0 ? '+' : ''}{stats.totalProfitUnits.toFixed(2)}
             </div>
+            <div className="text-xs text-slate-400">ROI {stats.roi >= 0 ? '+' : ''}{stats.roi}%</div>
           </div>
           <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
             <div className="flex items-center gap-2 text-amber-600 text-sm mb-1">
@@ -276,6 +322,50 @@ export default function TrackingDashboard() {
             </div>
             <div className="text-2xl font-bold text-amber-600">{alerts.length}</div>
             <div className="text-xs text-slate-400">value bets detectadas</div>
+          </div>
+        </div>
+      )}
+
+      {sessionStatus === 'authenticated' && stats?.ranking && activeTab === 'picks' && (
+        <div className="grid gap-4 lg:grid-cols-2 mb-6">
+          <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-emerald-600" />
+              <div>
+                <h3 className="font-bold text-slate-900">Ranking por mercado</h3>
+                <p className="text-xs text-slate-500">Veja onde o COLT performa melhor e pior.</p>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-600">Melhores mercados</p>
+                {renderPerformanceList(stats.ranking.marketsTop, 'Ainda não há picks resolvidas por mercado.')}
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-500">Mercados mais fracos</p>
+                {renderPerformanceList(stats.ranking.marketsBottom, 'Sem dados suficientes para apontar fraquezas.')}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-amber-500" />
+              <div>
+                <h3 className="font-bold text-slate-900">Ranking por liga</h3>
+                <p className="text-xs text-slate-500">Descubra em quais ligas vale insistir ou reduzir exposição.</p>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-600">Melhores ligas</p>
+                {renderPerformanceList(stats.ranking.leaguesTop, 'Ainda não há picks resolvidas por liga.')}
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-500">Ligas mais fracas</p>
+                {renderPerformanceList(stats.ranking.leaguesBottom, 'Sem dados suficientes para apontar fraquezas.')}
+              </div>
+            </div>
           </div>
         </div>
       )}
